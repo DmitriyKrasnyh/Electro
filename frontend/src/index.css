@@ -1,0 +1,77 @@
+@import "tailwindcss";
+
+/* Системные шрифты: ничего не скачивается, поэтому интерфейс работает и без интернета. */
+@theme {
+  --font-mono: ui-monospace, "Roboto Mono", "Cascadia Mono", Consolas, monospace;
+}
+
+@layer base {
+  html {
+    /* Запрещает браузеру перекрашивать страницу в тёмную тему. */
+    color-scheme: light;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply bg-gray-100 text-lg text-gray-950;
+  }
+
+  :focus-visible {
+    outline: 3px solid var(--color-blue-700);
+    outline-offset: 2px;
+  }
+}
+
+/* Общие стили. Минимальная высота 56 px у всего, что нажимают: так попадают и в перчатках. */
+@layer components {
+  .page {
+    @apply mx-auto w-full max-w-3xl space-y-4 p-3;
+  }
+
+  .btn {
+    @apply inline-flex min-h-14 cursor-pointer items-center justify-center gap-2 border-2 border-gray-950 bg-white px-4 text-center text-lg leading-tight font-semibold text-gray-950 select-none active:bg-gray-200 disabled:cursor-default disabled:opacity-50;
+  }
+
+  /* Кнопка выбора файла устроена как подпись к скрытому полю, рамку фокуса рисуем ей. */
+  .btn:has(input:focus-visible) {
+    outline: 3px solid var(--color-blue-700);
+    outline-offset: 2px;
+  }
+
+  .btn-primary {
+    @apply bg-gray-950 text-white active:bg-gray-700;
+  }
+
+  .btn-danger {
+    @apply border-red-700 text-red-800 active:bg-red-100;
+  }
+
+  .btn-header {
+    @apply border-white bg-transparent text-white active:bg-gray-700;
+  }
+
+  .field {
+    @apply min-h-14 w-full border-2 border-gray-500 bg-white px-3 text-lg text-gray-950 focus:border-gray-950 disabled:bg-gray-100 disabled:text-gray-600;
+  }
+
+  .label {
+    @apply mb-1 block text-base font-semibold;
+  }
+
+  .panel {
+    @apply border-2 border-gray-300 bg-white p-4;
+  }
+
+  .panel-title {
+    @apply mb-3 text-sm font-bold tracking-wider text-gray-700 uppercase;
+  }
+
+  /* Сигнальная лента: метка заблокированной задачи, видна издалека. */
+  .hazard {
+    background: repeating-linear-gradient(
+      -45deg,
+      var(--color-red-700) 0 12px,
+      var(--color-white) 12px 24px
+    );
+  }
+}

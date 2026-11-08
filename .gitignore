@@ -1,0 +1,13 @@
+# Секреты: адрес и ключ Supabase, пароли бригады
+.env
+
+# Зависимости и сборка
+node_modules/
+dist/
+
+# Старый сервер PocketBase: приложение переехало на Supabase, папка не нужна
+backend/
+
+# Системные файлы
+.DS_Store
+Thumbs.db
