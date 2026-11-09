@@ -1,12 +1,12 @@
 import { useState } from "react"
-import { useSearchParams } from "react-router"
+import { Link, useSearchParams } from "react-router"
 import { LoadStatus } from "../components/LoadStatus"
 import { PageHeader } from "../components/PageHeader"
-import { CheckIcon } from "../components/icons"
+import { CheckIcon, PinIcon } from "../components/icons"
 import { useLoad } from "../hooks/useLoad"
 import { useRestoreScroll } from "../hooks/useRestoreScroll"
 import { getCableJournal, setCableStage, type Directories } from "../lib/data"
-import { errorMessage, formatDateTime, nameById } from "../lib/format"
+import { errorMessage, formatDateTime, hasPlanPoint, nameById } from "../lib/format"
 import { CABLE_STAGES, CABLE_STAGE_LABELS, SYSTEM_LABELS, TASK_SYSTEMS, type CableLine, type CableStage } from "../types"
 
 // Кабельный журнал: линии по проекту и отметки о ходе работ.
@@ -149,7 +149,14 @@ export default function CablesPage() {
 
             {groups.length === 0 && <p className="text-gray-700">Ничего не найдено.</p>}
             {groups.map((group) => (
-              <LineGroup key={group.key} title={group.title} lines={group.lines} stage={stage} directories={directories} />
+              <LineGroup
+                key={group.key}
+                title={group.title}
+                roomId={group.roomId}
+                lines={group.lines}
+                stage={stage}
+                directories={directories}
+              />
             ))}
 
             <section className="panel space-y-3">
@@ -199,13 +206,18 @@ function Summary({ lines, stage }: { lines: CableLine[]; stage: CableStage }) {
 
 interface LineGroupProps {
   title: string
+  roomId: string // пусто, если группа не помещение (например, камеры этажа)
   lines: CableLine[]
   stage: CableStage
   directories: Directories
 }
 
-function LineGroup({ title, lines, stage, directories }: LineGroupProps) {
+function LineGroup({ title, roomId, lines, stage, directories }: LineGroupProps) {
   const [error, setError] = useState("")
+  // Помещение, указанное на плане своего этажа, можно сразу там и показать.
+  const room = directories.rooms.find((item) => item.id === roomId)
+  const roomFloor = directories.floors.find((item) => item.id === room?.floor)
+  const planLink = room && roomFloor?.plan && hasPlanPoint(room) ? `/floors/${roomFloor.id}/plan?showRoom=${room.id}` : ""
   const done = lines.filter((line) => line[`${stage}_at`]).length
   const left = lines.length - done
 
@@ -232,11 +244,18 @@ function LineGroup({ title, lines, stage, directories }: LineGroupProps) {
           <span className="text-lg font-semibold text-gray-700 tabular-nums">
             {done} из {lines.length}
           </span>
-          {left > 1 && (
-            <button type="button" className="btn shrink-0 px-3 text-base" onClick={markAll}>
-              Отметить все
-            </button>
-          )}
+          <div className="flex shrink-0 gap-2">
+            {planLink && (
+              <Link to={planLink} className="btn w-14 px-0" aria-label={`Показать на плане: ${title}`}>
+                <PinIcon />
+              </Link>
+            )}
+            {left > 1 && (
+              <button type="button" className="btn px-3 text-base" onClick={markAll}>
+                Отметить все
+              </button>
+            )}
+          </div>
         </div>
       </div>
       {error && (
@@ -305,12 +324,12 @@ function LineButton({ line, stage, directories, onToggle }: LineButtonProps) {
 
 // Линии интернета группируются по помещению, остальные по системе и этажу.
 function groupLines(lines: CableLine[], directories: Directories) {
-  const groups = new Map<string, { key: string; title: string; lines: CableLine[] }>()
+  const groups = new Map<string, { key: string; title: string; roomId: string; lines: CableLine[] }>()
   for (const line of lines) {
     const room = nameById(directories.rooms, line.room)
     const key = room ? `room:${line.room}` : `system:${line.system}:${line.floor}`
     const title = room || [SYSTEM_LABELS[line.system], nameById(directories.floors, line.floor)].filter(Boolean).join(", ")
-    const group = groups.get(key) ?? { key, title, lines: [] }
+    const group = groups.get(key) ?? { key, title, roomId: room ? line.room : "", lines: [] }
     group.lines.push(line)
     groups.set(key, group)
   }

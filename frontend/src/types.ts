@@ -29,6 +29,9 @@ export interface Floor extends BaseRecord {
 export interface Room extends BaseRecord {
   floor: string
   name: string
+  // Точка помещения на плане этажа в процентах, как у задач. Пара нулей: точки нет.
+  plan_x: number
+  plan_y: number
 }
 
 export type TaskSystem = "skud" | "video" | "emergency_light" | "scs" | "electric" | "panels"

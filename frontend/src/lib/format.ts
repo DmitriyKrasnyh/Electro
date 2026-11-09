@@ -37,8 +37,15 @@ export function isOverdue(task: Task): boolean {
 }
 
 // Пара нулей значит, что точки на плане нет: так поле заполнено по умолчанию.
-export function hasPlanPoint(task: Pick<Task, "plan_x" | "plan_y">): boolean {
-  return task.plan_x > 0 || task.plan_y > 0
+// Подходит и для задач, и для помещений. У помещений, загруженных до появления точек, полей нет вовсе.
+export function hasPlanPoint(item: { plan_x?: number; plan_y?: number }): boolean {
+  return (item.plan_x ?? 0) > 0 || (item.plan_y ?? 0) > 0
+}
+
+// Короткая подпись помещения на плане: номер из начала названия («21 Кабинет врача 4» → «21»).
+// Если номера нет, само название.
+export function roomLabel(name: string): string {
+  return name.match(/^\d+/)?.[0] ?? name
 }
 
 export function nameById(list: { id: string; name: string }[], id: string): string {

@@ -8,13 +8,14 @@ import { CloseIcon } from "../components/icons"
 import { useGoBack } from "../hooks/useGoBack"
 import { useLoad } from "../hooks/useLoad"
 import { usePlanImage } from "../hooks/usePlanImage"
-import { getPlanData, updateTask } from "../lib/data"
-import { hasPlanPoint, nameById } from "../lib/format"
+import { getPlanData, setRoomPoint, updateTask } from "../lib/data"
+import { hasPlanPoint, nameById, roomLabel } from "../lib/format"
 import { useSyncState } from "../lib/sync"
 import { SYSTEM_LABELS, TASK_SYSTEMS, isTaskSystem } from "../types"
 
 // План этажа. Режимы задаются адресом страницы:
-// ?task=ID показать точку задачи, ?place=ID поставить точку существующей задаче.
+// ?task=ID показать точку задачи, ?place=ID поставить точку существующей задаче,
+// ?room=ID указать, где помещение, ?showRoom=ID показать помещение (из кабельного журнала).
 export default function PlanPage() {
   const { id = "" } = useParams()
   const navigate = useNavigate()
@@ -29,12 +30,39 @@ export default function PlanPage() {
   const [saving, setSaving] = useState(false)
 
   const placeId = params.get("place")
-  const backFromPlacing = useGoBack(placeId ? `/tasks/${placeId}` : "/plans")
+  const placeRoomId = params.get("room")
+  const showRoomId = params.get("showRoom")
+  const backTo = placeId ? `/tasks/${placeId}` : placeRoomId ? "/directories" : "/plans"
+  const backFromPlacing = useGoBack(backTo)
 
   const system = params.get("system") ?? ""
   const tasks = data?.tasks ?? []
   const placingTask = tasks.find((task) => task.id === placeId)
   const selectedTask = tasks.find((task) => task.id === selectedId)
+  const floorRooms = (data?.directories.rooms ?? []).filter((room) => room.floor === id)
+  const placingRoom = floorRooms.find((room) => room.id === placeRoomId)
+  const shownRoom = floorRooms.find((room) => room.id === showRoomId)
+  const placing = Boolean(placeId || placeRoomId)
+
+  // Номера помещений. Помещение, которое сейчас переставляют, после нажатия показывается новой точкой.
+  const labels = floorRooms
+    .filter((room) => hasPlanPoint(room) && !(room.id === placeRoomId && draft))
+    .map((room) => ({
+      id: room.id,
+      x: room.plan_x,
+      y: room.plan_y,
+      text: roomLabel(room.name),
+      highlighted: room.id === showRoomId || room.id === placeRoomId,
+    }))
+
+  // Куда приблизиться при открытии: выбранная задача или нужное помещение.
+  const focusRoom = shownRoom ?? placingRoom
+  const focus =
+    selectedTask && hasPlanPoint(selectedTask)
+      ? { x: selectedTask.plan_x, y: selectedTask.plan_y }
+      : focusRoom && hasPlanPoint(focusRoom)
+        ? { x: focusRoom.plan_x, y: focusRoom.plan_y }
+        : null
 
   const markers = tasks
     .filter((task) => hasPlanPoint(task) && (!system || task.system === system) && task.id !== placeId)
@@ -79,6 +107,17 @@ export default function PlanPage() {
     const query = new URLSearchParams({ floor: id, x: String(draft.x), y: String(draft.y) })
     if (isTaskSystem(system)) query.set("system", system)
     navigate(`/tasks/new?${query}`)
+  }
+
+  async function saveRoomPoint() {
+    if (!draft || !placingRoom) return
+    setSaving(true)
+    try {
+      await setRoomPoint(placingRoom, draft.x, draft.y)
+      backFromPlacing()
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function saveTaskPoint() {
@@ -129,7 +168,7 @@ export default function PlanPage() {
 
   return (
     <div className="flex h-dvh flex-col">
-      <PageHeader title={data?.floor.name ?? "План этажа"} backTo={placeId ? `/tasks/${placeId}` : "/plans"} />
+      <PageHeader title={data?.floor.name ?? "План этажа"} backTo={backTo} />
 
       <main className="relative min-h-0 flex-1 bg-gray-300">
         {url ? (
@@ -138,11 +177,12 @@ export default function PlanPage() {
             key={url}
             imageUrl={url}
             markers={markers}
+            labels={labels}
             selectedId={selectedId}
             draft={draft}
-            focus={selectedTask && hasPlanPoint(selectedTask) ? { x: selectedTask.plan_x, y: selectedTask.plan_y } : null}
+            focus={focus}
             // При расстановке точка может оказаться рядом с чужой, поэтому чужие не нажимаются.
-            onTapMarker={placeId ? undefined : handleTapMarker}
+            onTapMarker={placing ? undefined : handleTapMarker}
             onTapPlan={handleTapPlan}
           />
         ) : (
@@ -155,7 +195,27 @@ export default function PlanPage() {
           {/* Минимальная высота одна для всех режимов: иначе план подпрыгивал бы при каждом нажатии.
               На низком экране (телефон повёрнут) её нет: там каждый пиксель нужен самому плану. */}
           <div className="mx-auto max-w-3xl space-y-2 [@media(min-height:500px)]:min-h-34">
-            {placeId ? (
+            {placeRoomId ? (
+              <>
+                <p className="leading-snug font-semibold break-words">
+                  {draft ? "Помещение здесь:" : "Нажмите на план, где находится помещение:"}{" "}
+                  {placingRoom?.name}
+                </p>
+                <div className="flex gap-2">
+                  <button type="button" className="btn" onClick={backFromPlacing}>
+                    Отмена
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary min-w-0 flex-1 px-2"
+                    disabled={!draft || saving || !placingRoom}
+                    onClick={() => void saveRoomPoint()}
+                  >
+                    Сохранить
+                  </button>
+                </div>
+              </>
+            ) : placeId ? (
               <>
                 <p className="leading-snug font-semibold break-words">
                   {draft ? "Точка задачи:" : "Нажмите на план, где находится задача:"} {placingTask?.title}
@@ -217,6 +277,13 @@ export default function PlanPage() {
               </>
             ) : (
               <>
+                {shownRoom && (
+                  <p className="leading-snug font-semibold break-words">
+                    {hasPlanPoint(shownRoom)
+                      ? `Помещение ${shownRoom.name}`
+                      : `Помещение ${shownRoom.name} ещё не указано на плане`}
+                  </p>
+                )}
                 <p className="text-base leading-snug text-gray-800 [@media(max-height:499px)]:hidden">
                   Нажмите на план: новая задача. На точку: её карточка.
                   {(data.plan?.pages ?? 1) > 1 && ` В файле страниц: ${data.plan?.pages}, показана первая.`}

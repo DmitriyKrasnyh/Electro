@@ -1,10 +1,12 @@
 import { useState } from "react"
+import { Link } from "react-router"
 import { AddItemForm } from "../components/AddItemForm"
 import { EditableName } from "../components/EditableName"
 import { FloorPlanControls } from "../components/FloorPlanControls"
 import { LoadStatus } from "../components/LoadStatus"
 import { PageHeader } from "../components/PageHeader"
 import { SaveErrorBanner } from "../components/SaveErrorBanner"
+import { PinIcon } from "../components/icons"
 import { useLoad } from "../hooks/useLoad"
 import {
   createFloor,
@@ -14,6 +16,7 @@ import {
   renameFloor,
   renameRoom,
 } from "../lib/data"
+import { hasPlanPoint } from "../lib/format"
 
 // Справочники: этажи, их планы и помещения.
 export default function DirectoriesPage() {
@@ -69,6 +72,11 @@ export default function DirectoriesPage() {
                   onSave={(name) => run(() => renameFloor(floor.id, name))}
                 />
                 <FloorPlanControls floor={floor} />
+                {floor.plan && (
+                  <p className="mt-2 text-base text-gray-700">
+                    Кнопка с меткой у помещения: указать его на плане. Тёмная метка: помещение уже указано.
+                  </p>
+                )}
                 <ul className="mt-2 divide-y-2 divide-gray-200 border-y-2 border-gray-200">
                   {rooms
                     .filter((room) => room.floor === floor.id)
@@ -78,6 +86,18 @@ export default function DirectoriesPage() {
                           name={room.name}
                           disabled={saving}
                           onSave={(name) => run(() => renameRoom(room.id, name))}
+                          actions={
+                            // Точку помещения ставят на плане этажа. Тёмная кнопка: точка уже стоит.
+                            floor.plan && (
+                              <Link
+                                to={`/floors/${floor.id}/plan?room=${room.id}`}
+                                className={`btn w-14 shrink-0 px-0 ${hasPlanPoint(room) ? "btn-primary" : "border-gray-400"}`}
+                                aria-label={`${hasPlanPoint(room) ? "Переставить на плане" : "Указать на плане"}: ${room.name}`}
+                              >
+                                <PinIcon />
+                              </Link>
+                            )
+                          }
                         />
                       </li>
                     ))}

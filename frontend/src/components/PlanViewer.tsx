@@ -12,9 +12,19 @@ export interface PlanMarker {
   blocked: boolean
 }
 
+// Подпись помещения на плане: только показывает, где оно, на нажатия не отвечает.
+export interface PlanLabel {
+  id: string
+  x: number
+  y: number
+  text: string
+  highlighted: boolean // нужное сейчас помещение: крупнее и заметнее
+}
+
 interface PlanViewerProps {
   imageUrl: string
   markers: PlanMarker[]
+  labels?: PlanLabel[]
   selectedId: string | null
   draft: { x: number; y: number } | null // точка, которую ставят прямо сейчас
   focus: { x: number; y: number } | null // куда приблизиться при открытии
@@ -33,7 +43,16 @@ const clamp = (value: number, min: number, max: number) => Math.min(Math.max(val
 
 // План с точками: перетаскивание, масштаб щипком, колесом мыши и кнопками.
 // Положение меняем напрямую в стиле, без перерисовки React: так жест идёт плавно даже на слабом телефоне.
-export function PlanViewer({ imageUrl, markers, selectedId, draft, focus, onTapMarker, onTapPlan }: PlanViewerProps) {
+export function PlanViewer({
+  imageUrl,
+  markers,
+  labels = [],
+  selectedId,
+  draft,
+  focus,
+  onTapMarker,
+  onTapPlan,
+}: PlanViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState<{ width: number; height: number } | null>(null)
@@ -242,6 +261,26 @@ export function PlanViewer({ imageUrl, markers, selectedId, draft, focus, onTapM
             onLoad={(event) => setSize({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })}
             className={`pointer-events-none block max-w-none bg-white ${size ? "h-full w-full" : "invisible"}`}
           />
+          {/* Номера помещений рисуем раньше точек задач: точки должны оставаться сверху. */}
+          {size &&
+            labels.map((label) => (
+              <span
+                key={label.id}
+                aria-hidden="true"
+                style={{
+                  left: `${label.x}%`,
+                  top: `${label.y}%`,
+                  transform: "translate(-50%, -50%) scale(var(--marker-scale, 1))",
+                }}
+                className={`pointer-events-none absolute border-2 border-gray-950 px-1 leading-tight font-bold whitespace-nowrap ${
+                  label.highlighted
+                    ? "z-10 bg-gray-950 px-2 py-0.5 text-lg text-white ring-4 ring-yellow-400"
+                    : "bg-white/90 text-sm text-gray-950"
+                }`}
+              >
+                {label.text}
+              </span>
+            ))}
           {size &&
             markers.map((marker) => (
               // Нажатие считается в handleTap, а кнопка нужна для клавиатуры и программ чтения с экрана.

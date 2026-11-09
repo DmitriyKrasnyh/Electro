@@ -325,13 +325,26 @@ export async function renameFloor(id: string, name: string): Promise<void> {
 export async function createRoom(floorId: string, name: string): Promise<void> {
   const now = dateTimeForDb(new Date())
   const body = { floor: floorId, name }
-  const room: Room = { ...body, id: newId(), created: now, updated: now }
+  const room: Room = { ...body, id: newId(), plan_x: 0, plan_y: 0, created: now, updated: now }
 
   await db.transaction("rw", db.rooms, db.outbox, async () => {
     await db.rooms.add(room)
     await addToOutbox({
       label: `Новое помещение: ${name}`,
       requests: [{ method: "create", collection: "rooms", id: room.id, body }],
+    })
+  })
+  void requestSync()
+}
+
+// Точка помещения на плане этажа. По ней на плане показывается номер помещения.
+export async function setRoomPoint(room: Room, x: number, y: number): Promise<void> {
+  const body = { plan_x: x, plan_y: y }
+  await db.transaction("rw", db.rooms, db.outbox, async () => {
+    await db.rooms.update(room.id, { ...body, updated: dateTimeForDb(new Date()) })
+    await addToOutbox({
+      label: `Точка помещения на плане: ${room.name}`,
+      requests: [{ method: "update", collection: "rooms", id: room.id, body }],
     })
   })
   void requestSync()
