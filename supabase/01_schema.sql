@@ -239,7 +239,7 @@ declare
 begin
   for request in select * from jsonb_array_elements(requests) loop
     tbl := request ->> 'table';
-    if tbl not in ('floors', 'rooms', 'tasks', 'photos', 'task_history') then
+    if tbl not in ('floors', 'rooms', 'tasks', 'photos', 'task_history', 'cable_lines') then
       raise exception 'table % is not allowed', tbl using errcode = '42501';
     end if;
     -- Служебные поля ставит сервер.

@@ -3,11 +3,14 @@ import { db, PLAN_ON_DEVICE, type LocalPhoto, type LocalPlan, type OutboxItem } 
 import { NotFoundError, formatDate, hasPlanPoint, nameById } from "./format"
 import { requestSync } from "./sync"
 import {
+  CABLE_STAGE_LABELS,
   HISTORY_FIELD_LABELS,
   PHOTO_TYPE_LABELS,
   PRIORITY_LABELS,
   STATUS_LABELS,
   SYSTEM_LABELS,
+  type CableLine,
+  type CableStage,
   type ChecklistItem,
   type Floor,
   type Photo,
@@ -340,6 +343,35 @@ export async function renameRoom(id: string, name: string): Promise<void> {
     await addToOutbox({
       label: `Новое название помещения: ${name}`,
       requests: [{ method: "update", collection: "rooms", id, body: { name } }],
+    })
+  })
+  void requestSync()
+}
+
+// --- Кабельный журнал ---
+
+// Все линии в порядке проектного журнала и справочники для имён этажей, помещений, людей.
+export async function getCableJournal() {
+  const [lines, directories, object] = await Promise.all([db.cable_lines.toArray(), getDirectories(), getProjectObject()])
+  return { lines: lines.sort((a, b) => a.sort - b.sort), directories, object }
+}
+
+// Ставит или снимает отметку этапа сразу у нескольких линий (или у одной).
+// Это одно действие человека, поэтому и в очереди оно одно.
+export async function setCableStage(lines: CableLine[], stage: CableStage, done: boolean): Promise<void> {
+  const targets = lines.filter((line) => Boolean(line[`${stage}_at`]) !== done)
+  if (targets.length === 0) return
+
+  const now = dateTimeForDb(new Date())
+  const body = done ? { [`${stage}_at`]: now, [`${stage}_by`]: currentUserId() } : { [`${stage}_at`]: "", [`${stage}_by`]: "" }
+  const what = done ? CABLE_STAGE_LABELS[stage] : `снята отметка «${CABLE_STAGE_LABELS[stage]}»`
+  const label = targets.length === 1 ? `${targets[0].marking}: ${what}` : `Линий: ${targets.length}, ${what}`
+
+  await db.transaction("rw", db.cable_lines, db.outbox, async () => {
+    for (const line of targets) await db.cable_lines.update(line.id, { ...body, updated: now })
+    await addToOutbox({
+      label,
+      requests: targets.map((line) => ({ method: "update" as const, collection: "cable_lines", id: line.id, body })),
     })
   })
   void requestSync()

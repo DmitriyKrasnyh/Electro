@@ -1,5 +1,5 @@
 import Dexie, { type Table } from "dexie"
-import type { Floor, Photo, ProjectObject, Room, Task, TaskHistory, User } from "../types"
+import type { CableLine, Floor, Photo, ProjectObject, Room, Task, TaskHistory, User } from "../types"
 
 // Локальная база на устройстве (IndexedDB). Экраны читают и пишут только сюда,
 // поэтому приложение работает без связи. С сервером её выравнивает lib/sync.ts.
@@ -64,6 +64,7 @@ class AppDatabase extends Dexie {
   photos!: Table<LocalPhoto, string>
   plans!: Table<LocalPlan, string>
   photoUrls!: Table<PhotoUrl, string>
+  cable_lines!: Table<CableLine, string>
   outbox!: Table<OutboxItem, number>
   meta!: Table<{ key: string; value: string }, string>
 
@@ -86,6 +87,10 @@ class AppDatabase extends Dexie {
       outbox: "++id",
       meta: "key",
     })
+    // Кабельный журнал. Новая версия добавляет только новую таблицу, остальное не трогает.
+    this.version(2).stores({
+      cable_lines: "id, system",
+    })
   }
 }
 
@@ -95,7 +100,7 @@ export const OLD_DATABASE_NAME = "electro"
 export const db = new AppDatabase()
 
 // Коллекции, которые копируются с сервера на устройство.
-export const SYNCED_COLLECTIONS = ["users", "objects", "floors", "rooms", "tasks", "task_history", "photos"]
+export const SYNCED_COLLECTIONS = ["users", "objects", "floors", "rooms", "tasks", "task_history", "photos", "cable_lines"]
 
 // Стирает с устройства все данные. Вызывается при выходе из приложения.
 export async function clearLocalData(): Promise<void> {

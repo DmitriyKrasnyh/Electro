@@ -4,8 +4,9 @@ import { defineConfig } from "vite"
 import { VitePWA } from "vite-plugin-pwa"
 
 export default defineConfig({
-  // Обработчик PDF большой, но он загружается отдельно и только при открытии плана.
-  build: { chunkSizeWarningLimit: 600 },
+  // Обработчик PDF и библиотека Excel большие, но загружаются отдельно и только когда нужны:
+  // при открытии плана и при выгрузке кабельного журнала.
+  build: { chunkSizeWarningLimit: 1000 },
   plugins: [
     react(),
     tailwindcss(),

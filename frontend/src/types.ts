@@ -83,11 +83,39 @@ export interface TaskHistory extends BaseRecord {
   changed_at: string // время правки по часам устройства, может быть раньше created
 }
 
+// Линия кабельного журнала. Проектные поля загружает администратор, монтажники ставят
+// отметки о ходе работ. Пустое время отметки значит, что этап ещё не сделан.
+export interface CableLine extends BaseRecord {
+  object: string
+  system: TaskSystem
+  marking: string
+  from_point: string
+  to_point: string
+  floor: string
+  room: string
+  cable_brand: string
+  cores: string
+  design_length: number
+  laid_brand: string // пусто = проложен кабель по проекту
+  sort: number
+  laid_at: string
+  laid_by: string
+  marked_at: string
+  marked_by: string
+  terminated_at: string
+  terminated_by: string
+  tested_at: string
+  tested_by: string
+}
+
+export type CableStage = "laid" | "marked" | "terminated" | "tested"
+
 // Списки значений в порядке показа на экране.
 export const TASK_SYSTEMS: TaskSystem[] = ["skud", "video", "emergency_light", "scs", "electric", "panels"]
 export const TASK_STATUSES: TaskStatus[] = ["not_started", "in_progress", "mounted", "checked", "done"]
 export const TASK_PRIORITIES: TaskPriority[] = ["high", "normal", "low"]
 export const PHOTO_TYPES: PhotoType[] = ["before", "after", "hidden_works", "marking", "defect"]
+export const CABLE_STAGES: CableStage[] = ["laid", "marked", "terminated", "tested"]
 
 export function isTaskSystem(value: string | undefined): value is TaskSystem {
   return TASK_SYSTEMS.includes(value as TaskSystem)
@@ -132,6 +160,13 @@ export const PRIORITY_LABELS: Record<TaskPriority, string> = {
   low: "Низкий",
   normal: "Обычный",
   high: "Высокий",
+}
+
+export const CABLE_STAGE_LABELS: Record<CableStage, string> = {
+  laid: "Проложен",
+  marked: "Промаркирован",
+  terminated: "Оконечен",
+  tested: "Проверен",
 }
 
 export const PHOTO_TYPE_LABELS: Record<PhotoType, string> = {

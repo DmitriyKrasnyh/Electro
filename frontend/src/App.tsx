@@ -2,6 +2,7 @@ import { useEffect } from "react"
 import { Navigate, Outlet, Route, Routes, useLocation, useNavigationType } from "react-router"
 import { FirstSyncGate } from "./components/FirstSyncGate"
 import { isLoggedIn, useCurrentUser } from "./lib/auth"
+import CablesPage from "./pages/CablesPage"
 import DirectoriesPage from "./pages/DirectoriesPage"
 import HomePage from "./pages/HomePage"
 import LoginPage from "./pages/LoginPage"
@@ -54,6 +55,7 @@ export default function App() {
           <Route path="/floors/:id/plan" element={<PlanPage />} />
           <Route path="/sync" element={<SyncPage />} />
           <Route path="/password" element={<PasswordPage />} />
+          <Route path="/cables" element={<CablesPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

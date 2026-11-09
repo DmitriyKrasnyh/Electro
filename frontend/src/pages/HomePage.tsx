@@ -58,9 +58,14 @@ export default function HomePage() {
               ))}
             </section>
 
-            <Link to="/plans" className="btn w-full">
-              Планы этажей
-            </Link>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Link to="/plans" className="btn w-full">
+                Планы этажей
+              </Link>
+              <Link to="/cables" className="btn w-full">
+                Кабельный журнал
+              </Link>
+            </div>
 
             <TaskSection
               title="Мои задачи"

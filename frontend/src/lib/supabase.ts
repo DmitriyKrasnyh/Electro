@@ -86,7 +86,17 @@ const KEEP_NULL = new Set(["checklist"])
 
 // Время сервер отдаёт как 2026-11-08T10:00:00.123456+00:00, а устройство пишет
 // 2026-11-08T10:00:00.123Z. Приводим к одному виду, иначе сравнение строк врёт.
-const TIME_FIELDS = new Set(["created", "updated", "changed_at", "client_updated_at", "taken_at"])
+const TIME_FIELDS = new Set([
+  "created",
+  "updated",
+  "changed_at",
+  "client_updated_at",
+  "taken_at",
+  "laid_at",
+  "marked_at",
+  "terminated_at",
+  "tested_at",
+])
 
 export function fromServer(row: Record<string, unknown>): Record<string, unknown> {
   const result: Record<string, unknown> = {}
@@ -111,4 +121,5 @@ export const SERVER_TABLES: Record<string, string> = {
   tasks: "tasks",
   task_history: "task_history",
   photos: "photos",
+  cable_lines: "cable_lines",
 }
