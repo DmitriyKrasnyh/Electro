@@ -120,14 +120,15 @@ export async function getPhotos(taskId: string): Promise<PhotoWithUrls[]> {
 
 // Всё для экрана плана: этаж, файл плана и задачи этого этажа.
 export async function getPlanData(floorId: string) {
-  const [floor, plan, tasks, directories] = await Promise.all([
+  const [floor, plan, tasks, directories, cableLines] = await Promise.all([
     db.floors.get(floorId),
     db.plans.get(floorId),
     db.tasks.where("floor").equals(floorId).toArray(),
     getDirectories(),
+    db.cable_lines.toArray(), // для раскраски помещений по ходу прокладки
   ])
   if (!floor) throw new NotFoundError()
-  return { floor, plan, tasks, directories }
+  return { floor, plan, tasks, directories, cableLines }
 }
 
 // Время последней успешной синхронизации, пустая строка, если её ещё не было.
@@ -461,6 +462,24 @@ export async function createMeasurement(objectId: string, fields: MeasurementFie
     await addToOutbox({
       label: `Замер заземления: ${fields.place}, ${fields.resistance} Ом`,
       requests: [{ method: "create", collection: "ground_measurements", id: measurement.id, body }],
+    })
+  })
+  void requestSync()
+}
+
+// Исправление ошибки ввода. Время замера и кто мерил остаются прежними.
+export async function updateMeasurement(measurement: GroundMeasurement, fields: MeasurementFields): Promise<void> {
+  const body = Object.fromEntries(
+    (Object.keys(fields) as (keyof MeasurementFields)[])
+      .filter((key) => fields[key] !== measurement[key])
+      .map((key) => [key, fields[key]]),
+  )
+  if (Object.keys(body).length === 0) return
+  await db.transaction("rw", db.ground_measurements, db.outbox, async () => {
+    await db.ground_measurements.update(measurement.id, { ...body, updated: dateTimeForDb(new Date()) })
+    await addToOutbox({
+      label: `Исправлен замер: ${fields.place}`,
+      requests: [{ method: "update", collection: "ground_measurements", id: measurement.id, body }],
     })
   })
   void requestSync()

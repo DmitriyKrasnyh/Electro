@@ -3,7 +3,13 @@ import { LoadStatus } from "../components/LoadStatus"
 import { PageHeader } from "../components/PageHeader"
 import { useLoad } from "../hooks/useLoad"
 import { useCurrentUser } from "../lib/auth"
-import { createMeasurement, deleteMeasurement, getGroundMeasurements, type Directories } from "../lib/data"
+import {
+  createMeasurement,
+  deleteMeasurement,
+  getGroundMeasurements,
+  updateMeasurement,
+  type Directories,
+} from "../lib/data"
 import { errorMessage, formatDateTime, nameById } from "../lib/format"
 import type { GroundMeasurement } from "../types"
 
@@ -102,16 +108,25 @@ export default function GroundingPage() {
   )
 }
 
-// --- Новый замер ---
+// --- Новый замер или исправление существующего ---
 
-function MeasurementForm({ objectId, directories }: { objectId: string; directories: Directories }) {
-  const [place, setPlace] = useState("")
-  const [floor, setFloor] = useState("")
-  const [room, setRoom] = useState("")
-  const [resistance, setResistance] = useState("")
-  const [norm, setNorm] = useState(DEFAULT_NORM)
-  const [instrument, setInstrument] = useState(readInstrument)
-  const [comment, setComment] = useState("")
+interface MeasurementFormProps {
+  objectId: string
+  directories: Directories
+  editing?: GroundMeasurement // если задан, форма исправляет этот замер
+  onDone?: () => void // закрыть форму исправления
+}
+
+const toText = (value: number) => value.toLocaleString("ru-RU", { maximumFractionDigits: 3, useGrouping: false })
+
+function MeasurementForm({ objectId, directories, editing, onDone }: MeasurementFormProps) {
+  const [place, setPlace] = useState(editing?.place ?? "")
+  const [floor, setFloor] = useState(editing?.floor ?? "")
+  const [room, setRoom] = useState(editing?.room ?? "")
+  const [resistance, setResistance] = useState(editing ? toText(Number(editing.resistance)) : "")
+  const [norm, setNorm] = useState(editing ? toText(Number(editing.norm)) : DEFAULT_NORM)
+  const [instrument, setInstrument] = useState(editing ? editing.instrument : readInstrument)
+  const [comment, setComment] = useState(editing?.comment ?? "")
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -133,16 +148,27 @@ function MeasurementForm({ objectId, directories }: { objectId: string; director
 
     setSaving(true)
     setMessage(null)
+    const fields = {
+      place: place.trim(),
+      floor,
+      room,
+      resistance: value,
+      norm: limit,
+      instrument: instrument.trim(),
+      comment: comment.trim(),
+    }
+    if (editing) {
+      try {
+        await updateMeasurement(editing, fields)
+        onDone?.()
+      } catch (saveError) {
+        setMessage({ ok: false, text: errorMessage(saveError) })
+        setSaving(false)
+      }
+      return
+    }
     try {
-      await createMeasurement(objectId, {
-        place: place.trim(),
-        floor,
-        room,
-        resistance: value,
-        norm: limit,
-        instrument: instrument.trim(),
-        comment: comment.trim(),
-      })
+      await createMeasurement(objectId, fields)
       try {
         localStorage.setItem(INSTRUMENT_KEY, instrument.trim())
       } catch {
@@ -169,8 +195,8 @@ function MeasurementForm({ objectId, directories }: { objectId: string; director
   const floorRooms = directories.rooms.filter((item) => item.floor === floor)
 
   return (
-    <form onSubmit={handleSubmit} noValidate className="panel space-y-4">
-      <h2 className="panel-title">Новый замер</h2>
+    <form onSubmit={handleSubmit} noValidate className={editing ? "space-y-4" : "panel space-y-4"}>
+      <h2 className="panel-title">{editing ? "Исправить замер" : "Новый замер"}</h2>
       <label className="block">
         <span className="label">Что мерили</span>
         <input
@@ -245,9 +271,20 @@ function MeasurementForm({ objectId, directories }: { objectId: string; director
           {message.text}
         </p>
       )}
-      <button type="submit" className="btn btn-primary w-full" disabled={saving}>
-        {saving ? "Сохраняем…" : "Сохранить замер"}
-      </button>
+      {editing ? (
+        <div className="flex gap-2">
+          <button type="button" className="btn" onClick={onDone}>
+            Отмена
+          </button>
+          <button type="submit" className="btn btn-primary min-w-0 flex-1 px-2" disabled={saving}>
+            {saving ? "Сохраняем…" : "Сохранить"}
+          </button>
+        </div>
+      ) : (
+        <button type="submit" className="btn btn-primary w-full" disabled={saving}>
+          {saving ? "Сохраняем…" : "Сохранить замер"}
+        </button>
+      )}
     </form>
   )
 }
@@ -262,6 +299,7 @@ interface MeasurementCardProps {
 
 function MeasurementCard({ measurement, directories, canDelete }: MeasurementCardProps) {
   const [error, setError] = useState("")
+  const [editing, setEditing] = useState(false)
   const value = Number(measurement.resistance)
   const limit = Number(measurement.norm)
   const ok = value <= limit
@@ -276,6 +314,19 @@ function MeasurementCard({ measurement, directories, canDelete }: MeasurementCar
     } catch (deleteError) {
       setError(errorMessage(deleteError))
     }
+  }
+
+  if (editing) {
+    return (
+      <article className="border-2 border-gray-950 bg-white p-3">
+        <MeasurementForm
+          objectId={measurement.object}
+          directories={directories}
+          editing={measurement}
+          onDone={() => setEditing(false)}
+        />
+      </article>
+    )
   }
 
   return (
@@ -302,11 +353,16 @@ function MeasurementCard({ measurement, directories, canDelete }: MeasurementCar
           {error}
         </p>
       )}
-      {canDelete && (
-        <button type="button" className="btn btn-danger mt-3 w-full" onClick={() => void handleDelete()}>
-          Удалить замер
+      <div className="mt-3 flex gap-2">
+        <button type="button" className="btn min-w-0 flex-1 px-2" onClick={() => setEditing(true)}>
+          Изменить
         </button>
-      )}
+        {canDelete && (
+          <button type="button" className="btn btn-danger min-w-0 flex-1 px-2" onClick={() => void handleDelete()}>
+            Удалить
+          </button>
+        )}
+      </div>
     </article>
   )
 }

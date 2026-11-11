@@ -19,6 +19,17 @@ export interface PlanLabel {
   y: number
   text: string
   highlighted: boolean // нужное сейчас помещение: крупнее и заметнее
+  // Ход прокладки кабелей в помещении. Нет: у помещения нет линий в кабельном журнале.
+  progress?: CableProgress
+}
+
+export type CableProgress = "none" | "partial" | "done"
+
+// Цвета подписей по ходу работ. Те же цвета в расшифровке под планом (PlanPage).
+export const PROGRESS_STYLES: Record<CableProgress, string> = {
+  none: "bg-gray-300 text-gray-950", // ни одна линия не проведена
+  partial: "bg-yellow-300 text-gray-950", // работа идёт
+  done: "bg-green-700 text-white", // все линии выведены в подрозетники
 }
 
 interface PlanViewerProps {
@@ -273,10 +284,8 @@ export function PlanViewer({
                   transform: "translate(-50%, -50%) scale(var(--marker-scale, 1))",
                 }}
                 className={`pointer-events-none absolute border-2 border-gray-950 px-1 leading-tight font-bold whitespace-nowrap ${
-                  label.highlighted
-                    ? "z-10 bg-gray-950 px-2 py-0.5 text-lg text-white ring-4 ring-yellow-400"
-                    : "bg-white/90 text-sm text-gray-950"
-                }`}
+                  label.progress ? PROGRESS_STYLES[label.progress] : "bg-white/90 text-gray-950"
+                } ${label.highlighted ? "z-10 px-2 py-0.5 text-lg ring-4 ring-blue-700" : "text-sm"}`}
               >
                 {label.text}
               </span>

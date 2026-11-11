@@ -23,6 +23,8 @@ export default function CablesPage() {
   const stage = (CABLE_STAGES.find((value) => value === params.get("stage")) ?? "laid") as CableStage
   const system = params.get("system") ?? ""
   const floor = params.get("floor") ?? ""
+  // «Только не проведённые» и т. п.: видно, что осталось сделать по выбранной отметке.
+  const onlyLeft = params.get("left") === "1"
 
   function setParam(name: string, value: string) {
     setParams(
@@ -145,16 +147,30 @@ export default function CablesPage() {
                 />
               </label>
 
+              <label className="flex min-h-14 items-center gap-3 font-semibold">
+                <input
+                  type="checkbox"
+                  className="size-7 shrink-0 accent-gray-950"
+                  checked={onlyLeft}
+                  onChange={(event) => setParam("left", event.target.checked ? "1" : "")}
+                />
+                {LEFT_LABELS[stage]}
+              </label>
+
               <Summary lines={visible} stage={stage} />
             </section>
 
             {groups.length === 0 && <p className="text-gray-700">Ничего не найдено.</p>}
+            {onlyLeft && groups.length > 0 && groups.every((group) => group.lines.every((line) => line[`${stage}_at`])) && (
+              <p className="panel font-semibold text-green-800">Всё отмечено, ничего не осталось.</p>
+            )}
             {groups.map((group) => (
               <LineGroup
                 key={group.key}
                 title={group.title}
                 roomId={group.roomId}
                 lines={group.lines}
+                onlyLeft={onlyLeft}
                 stage={stage}
                 directories={directories}
               />
@@ -209,11 +225,12 @@ interface LineGroupProps {
   title: string
   roomId: string // пусто, если группа не помещение (например, камеры этажа)
   lines: CableLine[]
+  onlyLeft: boolean // показывать только линии без выбранной отметки
   stage: CableStage
   directories: Directories
 }
 
-function LineGroup({ title, roomId, lines, stage, directories }: LineGroupProps) {
+function LineGroup({ title, roomId, lines, onlyLeft, stage, directories }: LineGroupProps) {
   const [error, setError] = useState("")
   // Помещение, указанное на плане своего этажа, можно сразу там и показать.
   const room = directories.rooms.find((item) => item.id === roomId)
@@ -221,6 +238,9 @@ function LineGroup({ title, roomId, lines, stage, directories }: LineGroupProps)
   const planLink = room && roomFloor?.plan && hasPlanPoint(room) ? `/floors/${roomFloor.id}/plan?showRoom=${room.id}` : ""
   const done = lines.filter((line) => line[`${stage}_at`]).length
   const left = lines.length - done
+  // Счётчик группы всегда по всем её линиям, а список при фильтре только по оставшимся.
+  const shown = onlyLeft ? lines.filter((line) => !line[`${stage}_at`]) : lines
+  if (shown.length === 0) return null
 
   async function change(targets: CableLine[], value: boolean) {
     setError("")
@@ -265,7 +285,7 @@ function LineGroup({ title, roomId, lines, stage, directories }: LineGroupProps)
         </p>
       )}
       <div className="space-y-2">
-        {lines.map((line) => (
+        {shown.map((line) => (
           <LineButton key={line.id} line={line} stage={stage} directories={directories} onToggle={(value) => void change([line], value)} />
         ))}
       </div>
@@ -326,6 +346,14 @@ function LineButton({ line, stage, directories, onToggle }: LineButtonProps) {
 }
 
 // --- Вспомогательные функции ---
+
+const LEFT_LABELS: Record<CableStage, string> = {
+  laid: "Только не проведённые",
+  box: "Только не выведенные в подрозетник",
+  marked: "Только не промаркированные",
+  terminated: "Только не оконеченные",
+  tested: "Только не проверенные",
+}
 
 // Линии интернета группируются по помещению, остальные по системе и этажу.
 function groupLines(lines: CableLine[], directories: Directories) {

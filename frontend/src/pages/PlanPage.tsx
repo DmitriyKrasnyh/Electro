@@ -2,7 +2,7 @@ import { useState } from "react"
 import { Link, useNavigate, useParams, useSearchParams } from "react-router"
 import { LoadStatus } from "../components/LoadStatus"
 import { PageHeader } from "../components/PageHeader"
-import { PlanViewer } from "../components/PlanViewer"
+import { PROGRESS_STYLES, PlanViewer, type CableProgress } from "../components/PlanViewer"
 import { BlockedNote, MarkingTag, StatusBadge } from "../components/taskBits"
 import { CloseIcon } from "../components/icons"
 import { useGoBack } from "../hooks/useGoBack"
@@ -44,6 +44,16 @@ export default function PlanPage() {
   const shownRoom = floorRooms.find((room) => room.id === showRoomId)
   const placing = Boolean(placeId || placeRoomId)
 
+  // Ход прокладки по помещениям: серый — ничего не проведено, жёлтый — работа идёт,
+  // зелёный — все линии выведены в подрозетники. Помещения без линий остаются белыми.
+  const progressByRoom = new Map<string, CableProgress>()
+  for (const room of floorRooms) {
+    const lines = (data?.cableLines ?? []).filter((line) => line.room === room.id)
+    if (lines.length === 0) continue
+    const progress = lines.every((line) => line.box_at) ? "done" : lines.some((line) => line.laid_at) ? "partial" : "none"
+    progressByRoom.set(room.id, progress)
+  }
+
   // Номера помещений. Помещение, которое сейчас переставляют, после нажатия показывается новой точкой.
   const labels = floorRooms
     .filter((room) => hasPlanPoint(room) && !(room.id === placeRoomId && draft))
@@ -53,6 +63,7 @@ export default function PlanPage() {
       y: room.plan_y,
       text: roomLabel(room.name),
       highlighted: room.id === showRoomId || room.id === placeRoomId,
+      progress: progressByRoom.get(room.id),
     }))
 
   // Куда приблизиться при открытии: выбранная задача или нужное помещение.
@@ -284,6 +295,15 @@ export default function PlanPage() {
                       : `Помещение ${shownRoom.name} ещё не указано на плане`}
                   </p>
                 )}
+                {labels.some((label) => label.progress) && (
+                  // Расшифровка цветов номеров помещений. На низком экране прячем: там место нужно плану.
+                  <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-800 [@media(max-height:499px)]:hidden">
+                    <span className="font-semibold">Кабели:</span>
+                    <Swatch progress="none" text="не начато" />
+                    <Swatch progress="partial" text="идёт" />
+                    <Swatch progress="done" text="всё в подрозетниках" />
+                  </p>
+                )}
                 <p className="text-base leading-snug text-gray-800 [@media(max-height:499px)]:hidden">
                   Нажмите на план: новая задача. На точку: её карточка.
                   {(data.plan?.pages ?? 1) > 1 && ` В файле страниц: ${data.plan?.pages}, показана первая.`}
@@ -307,5 +327,14 @@ export default function PlanPage() {
         </div>
       )}
     </div>
+  )
+}
+
+function Swatch({ progress, text }: { progress: CableProgress; text: string }) {
+  return (
+    <span className="flex items-center gap-1">
+      <span className={`inline-block h-4 w-5 border-2 border-gray-950 ${PROGRESS_STYLES[progress]}`} />
+      {text}
+    </span>
   )
 }
