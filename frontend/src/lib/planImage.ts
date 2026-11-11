@@ -11,17 +11,28 @@ function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality?: number)
   return new Promise((resolve) => canvas.toBlob(resolve, type, quality))
 }
 
-// Рисует первую страницу PDF в картинку. Страницы плана считаются одним листом:
-// точки задач привязаны к нему в процентах.
-export async function pdfToImage(file: Blob): Promise<{ image: Blob; pages: number }> {
-  // Библиотека большая, поэтому загружаем её только когда нужно нарисовать план.
+// Открытый PDF: число страниц и рисование любой страницы в картинку.
+// Нужен и планам этажей, и просмотру документов. После работы обязательно close().
+export interface OpenPdf {
+  pages: number
+  renderPage: (pageNumber: number) => Promise<Blob>
+  close: () => Promise<void>
+}
+
+export async function openPdf(file: Blob): Promise<OpenPdf> {
+  // Библиотека большая, поэтому загружаем её только когда нужно нарисовать PDF.
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs")
   pdfjs.GlobalWorkerOptions.workerSrc = workerUrl
 
   const loading = pdfjs.getDocument({ data: await file.arrayBuffer() })
-  try {
-    const pdf = await loading.promise
-    const page = await pdf.getPage(1)
+  // Файл не открылся (например, повреждён): освобождаем обработчик и сообщаем об ошибке.
+  const pdf = await loading.promise.catch(async (error: unknown) => {
+    await loading.destroy()
+    throw error
+  })
+
+  async function renderPage(pageNumber: number): Promise<Blob> {
+    const page = await pdf.getPage(pageNumber)
     const original = page.getViewport({ scale: 1 })
 
     for (const size of SIZES) {
@@ -34,15 +45,26 @@ export async function pdfToImage(file: Blob): Promise<{ image: Blob; pages: numb
         // Линии чертежа чётче всего в PNG. А вот скан в PNG занимает слишком много места.
         let image = await canvasToBlob(canvas, "image/png")
         if (image && image.size > MAX_PNG_SIZE) image = await canvasToBlob(canvas, "image/jpeg", 0.85)
-        if (image) return { image, pages: pdf.numPages }
+        if (image) return image
       } catch (error) {
-        console.warn(`План не нарисовался в размере ${size}`, error)
+        console.warn(`Страница PDF не нарисовалась в размере ${size}`, error)
       } finally {
         canvas.width = 0 // сразу освобождаем память
       }
     }
-    throw new Error("Не удалось нарисовать план")
+    throw new Error("Не удалось нарисовать страницу PDF")
+  }
+
+  return { pages: pdf.numPages, renderPage, close: () => loading.destroy() }
+}
+
+// Рисует первую страницу PDF в картинку. Страницы плана считаются одним листом:
+// точки задач привязаны к нему в процентах.
+export async function pdfToImage(file: Blob): Promise<{ image: Blob; pages: number }> {
+  const pdf = await openPdf(file)
+  try {
+    return { image: await pdf.renderPage(1), pages: pdf.pages }
   } finally {
-    await loading.destroy()
+    await pdf.close()
   }
 }

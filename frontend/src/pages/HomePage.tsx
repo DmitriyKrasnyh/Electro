@@ -7,7 +7,7 @@ import { TaskCard } from "../components/TaskCard"
 import { useLoad } from "../hooks/useLoad"
 import { useRestoreScroll } from "../hooks/useRestoreScroll"
 import { logout, useCurrentUser } from "../lib/auth"
-import { getDirectories, getTasks, type Directories } from "../lib/data"
+import { getDirectories, getTasks, waitingOn, type Directories } from "../lib/data"
 import { sortTasks } from "../lib/format"
 import { useInstallPrompt } from "../lib/install"
 import { TASK_SYSTEMS, type Task } from "../types"
@@ -17,7 +17,7 @@ export default function HomePage() {
   const install = useInstallPrompt()
   const { data, error, reload } = useLoad(async () => {
     const [tasks, directories] = await Promise.all([getTasks(), getDirectories()])
-    return { tasks, directories }
+    return { tasks, directories, tasksById: new Map(tasks.map((task) => [task.id, task])) }
   }, [])
 
   useRestoreScroll(Boolean(data))
@@ -58,12 +58,18 @@ export default function HomePage() {
               ))}
             </section>
 
-            <div className="grid gap-2 sm:grid-cols-2">
-              <Link to="/plans" className="btn w-full">
+            <div className="grid grid-cols-2 gap-2">
+              <Link to="/plans" className="btn w-full px-2">
                 Планы этажей
               </Link>
-              <Link to="/cables" className="btn w-full">
+              <Link to="/cables" className="btn w-full px-2">
                 Кабельный журнал
+              </Link>
+              <Link to="/documents" className="btn w-full px-2">
+                Документы
+              </Link>
+              <Link to="/grounding" className="btn w-full px-2">
+                Замеры заземления
               </Link>
             </div>
 
@@ -73,12 +79,14 @@ export default function HomePage() {
               // Сданные задачи здесь только мешали бы, они остаются в списках систем.
               tasks={data.tasks.filter((task) => task.assignee === user?.id && task.status !== "done")}
               directories={data.directories}
+              tasksById={data.tasksById}
             />
             <TaskSection
               title="Заблокировано"
               emptyText="Заблокированных задач нет."
               tasks={data.tasks.filter((task) => task.blocked)}
               directories={data.directories}
+              tasksById={data.tasksById}
             />
 
             <div className="space-y-2">
@@ -110,9 +118,10 @@ interface TaskSectionProps {
   emptyText: string
   tasks: Task[]
   directories: Directories
+  tasksById: Map<string, Task>
 }
 
-function TaskSection({ title, emptyText, tasks, directories }: TaskSectionProps) {
+function TaskSection({ title, emptyText, tasks, directories, tasksById }: TaskSectionProps) {
   return (
     <section>
       <h2 className="mb-2 pt-2 text-xl font-bold">
@@ -123,7 +132,13 @@ function TaskSection({ title, emptyText, tasks, directories }: TaskSectionProps)
       ) : (
         <div className="space-y-3">
           {sortTasks(tasks).map((task) => (
-            <TaskCard key={task.id} task={task} directories={directories} showSystem />
+            <TaskCard
+              key={task.id}
+              task={task}
+              directories={directories}
+              showSystem
+              waitingOn={waitingOn(task, tasksById)}
+            />
           ))}
         </div>
       )}

@@ -11,6 +11,7 @@ import {
   SYSTEM_LABELS,
   type CableLine,
   type CableStage,
+  type GroundMeasurement,
   type ChecklistItem,
   type Floor,
   type Photo,
@@ -53,6 +54,7 @@ type EditableField =
   | "checklist"
   | "plan_x"
   | "plan_y"
+  | "depends_on"
 
 export type TaskChanges = Partial<Pick<Task, EditableField>>
 
@@ -145,7 +147,12 @@ export async function getOutboxCounts(): Promise<{ pending: number; failed: numb
 
 // --- Запись ---
 
-export async function createTask(fields: TaskFields, planPoint?: { x: number; y: number }): Promise<Task> {
+// dependsOn: задача, которую нужно сдать раньше этой (кнопка «Создать следующую задачу»).
+export async function createTask(
+  fields: TaskFields,
+  planPoint?: { x: number; y: number },
+  dependsOn = "",
+): Promise<Task> {
   const now = dateTimeForDb(new Date())
   const userId = currentUserId()
   const serverFields = {
@@ -155,6 +162,7 @@ export async function createTask(fields: TaskFields, planPoint?: { x: number; y:
     blocked_reason: "",
     plan_x: planPoint?.x ?? 0,
     plan_y: planPoint?.y ?? 0,
+    depends_on: dependsOn,
     created_by: userId,
     updated_by: userId,
     client_updated_at: now,
@@ -193,12 +201,17 @@ export async function updateTask(task: Task, changes: TaskChanges, directories: 
     updated_by: currentUserId(),
     client_updated_at: now,
   }
-  const rows = changedFields
-    .filter((field) => field !== "plan_x" && field !== "plan_y")
-    .map((field) => {
-      const [oldValue, newValue] = historyValues(field, task[field], allChanges[field], directories)
-      return newHistoryRow(task.id, field, oldValue, newValue, now)
-    })
+  // В истории для цепочки пишем названия задач, а не их ID.
+  const taskTitle = async (id: unknown) => (id ? ((await db.tasks.get(id as string))?.title ?? "") : "")
+  const rows: TaskHistory[] = []
+  for (const field of changedFields) {
+    if (field === "plan_x" || field === "plan_y") continue
+    const [oldValue, newValue] =
+      field === "depends_on"
+        ? [await taskTitle(task.depends_on), await taskTitle(allChanges.depends_on)]
+        : historyValues(field, task[field], allChanges[field], directories)
+    rows.push(newHistoryRow(task.id, field, oldValue, newValue, now))
+  }
   // Две координаты в истории считаем одной правкой.
   if (changedFields.includes("plan_x") || changedFields.includes("plan_y")) {
     const newPoint = { plan_x: allChanges.plan_x ?? task.plan_x, plan_y: allChanges.plan_y ?? task.plan_y }
@@ -371,20 +384,95 @@ export async function getCableJournal() {
 
 // Ставит или снимает отметку этапа сразу у нескольких линий (или у одной).
 // Это одно действие человека, поэтому и в очереди оно одно.
+// Состояние кабеля: не проведён → проведён → выведен в подрозетник. «Выведен в подрозетник»
+// возможен только у проведённого кабеля, поэтому он ставит и «проведён», а снятие «проведён»
+// снимает и его.
 export async function setCableStage(lines: CableLine[], stage: CableStage, done: boolean): Promise<void> {
   const targets = lines.filter((line) => Boolean(line[`${stage}_at`]) !== done)
   if (targets.length === 0) return
 
   const now = dateTimeForDb(new Date())
-  const body = done ? { [`${stage}_at`]: now, [`${stage}_by`]: currentUserId() } : { [`${stage}_at`]: "", [`${stage}_by`]: "" }
+  const user = currentUserId()
+  const mark = (name: CableStage) => ({ [`${name}_at`]: now, [`${name}_by`]: user })
+  const clear = (name: CableStage) => ({ [`${name}_at`]: "", [`${name}_by`]: "" })
+  const bodyFor = (line: CableLine): Record<string, string> => {
+    if (done) return { ...(stage === "box" && !line.laid_at ? mark("laid") : {}), ...mark(stage) }
+    return { ...clear(stage), ...(stage === "laid" && line.box_at ? clear("box") : {}) }
+  }
   const what = done ? CABLE_STAGE_LABELS[stage] : `снята отметка «${CABLE_STAGE_LABELS[stage]}»`
   const label = targets.length === 1 ? `${targets[0].marking}: ${what}` : `Линий: ${targets.length}, ${what}`
 
   await db.transaction("rw", db.cable_lines, db.outbox, async () => {
-    for (const line of targets) await db.cable_lines.update(line.id, { ...body, updated: now })
+    const requests = []
+    for (const line of targets) {
+      const body = bodyFor(line)
+      await db.cable_lines.update(line.id, { ...body, updated: now })
+      requests.push({ method: "update" as const, collection: "cable_lines", id: line.id, body })
+    }
+    await addToOutbox({ label, requests })
+  })
+  void requestSync()
+}
+
+// --- Цепочки задач ---
+
+// Предыдущая задача, которая ещё не сдана: пока она не сдана, эта ждёт.
+export function waitingOn(task: Task, tasksById: Map<string, Task>): Task | null {
+  const previous = task.depends_on ? tasksById.get(task.depends_on) : undefined
+  return previous && previous.status !== "done" ? previous : null
+}
+
+// Задачи, которые можно поставить предыдущими: кроме самой задачи и тех, что уже ждут её
+// (напрямую или через другие), иначе цепочка замкнулась бы в кольцо.
+export function chainCandidates(task: Task, tasks: Task[]): Task[] {
+  const after = new Set([task.id])
+  let grew = true
+  while (grew) {
+    grew = false
+    for (const other of tasks) {
+      if (other.depends_on && after.has(other.depends_on) && !after.has(other.id)) {
+        after.add(other.id)
+        grew = true
+      }
+    }
+  }
+  return tasks.filter((other) => !after.has(other.id))
+}
+
+// --- Заземление: замеры сопротивления ---
+
+export async function getGroundMeasurements() {
+  const [measurements, directories, object] = await Promise.all([
+    db.ground_measurements.toArray(),
+    getDirectories(),
+    getProjectObject(),
+  ])
+  return { measurements: measurements.sort((a, b) => b.measured_at.localeCompare(a.measured_at)), directories, object }
+}
+
+export type MeasurementFields = Pick<GroundMeasurement, "floor" | "room" | "place" | "resistance" | "norm" | "instrument" | "comment">
+
+export async function createMeasurement(objectId: string, fields: MeasurementFields): Promise<void> {
+  const now = dateTimeForDb(new Date())
+  const body = { ...fields, object: objectId, measured_at: now, measured_by: currentUserId() }
+  const measurement: GroundMeasurement = { ...body, id: newId(), created: now, updated: now }
+  await db.transaction("rw", db.ground_measurements, db.outbox, async () => {
+    await db.ground_measurements.add(measurement)
     await addToOutbox({
-      label,
-      requests: targets.map((line) => ({ method: "update" as const, collection: "cable_lines", id: line.id, body })),
+      label: `Замер заземления: ${fields.place}, ${fields.resistance} Ом`,
+      requests: [{ method: "create", collection: "ground_measurements", id: measurement.id, body }],
+    })
+  })
+  void requestSync()
+}
+
+// Удалить ошибочный замер может только администратор: это проверяет сервер.
+export async function deleteMeasurement(measurement: GroundMeasurement): Promise<void> {
+  await db.transaction("rw", db.ground_measurements, db.outbox, async () => {
+    await db.ground_measurements.delete(measurement.id)
+    await addToOutbox({
+      label: `Удалён замер: ${measurement.place}`,
+      requests: [{ method: "delete", collection: "ground_measurements", id: measurement.id, body: {} }],
     })
   })
   void requestSync()
@@ -399,7 +487,7 @@ function dateTimeForDb(date: Date): string {
 
 // ID создаёт клиент (15 символов a-z0-9). Запись сразу получает постоянный ID,
 // а при повторной отправке сервер распознаёт её и не создаёт дубль.
-function newId(): string {
+export function newId(): string {
   const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
   const bytes = crypto.getRandomValues(new Uint8Array(15))
   return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join("")

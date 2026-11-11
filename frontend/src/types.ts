@@ -34,7 +34,7 @@ export interface Room extends BaseRecord {
   plan_y: number
 }
 
-export type TaskSystem = "skud" | "video" | "emergency_light" | "scs" | "electric" | "panels"
+export type TaskSystem = "skud" | "video" | "emergency_light" | "scs" | "electric" | "panels" | "grounding"
 export type TaskStatus = "not_started" | "in_progress" | "mounted" | "checked" | "done"
 export type TaskPriority = "low" | "normal" | "high"
 export type PhotoType = "before" | "after" | "hidden_works" | "marking" | "defect"
@@ -66,6 +66,8 @@ export interface Task extends BaseRecord {
   created_by: string
   updated_by: string
   client_updated_at: string
+  // Цепочка: задача, которую нужно сдать раньше этой. Пусто, если задача ни от чего не зависит.
+  depends_on: string
 }
 
 export interface Photo extends BaseRecord {
@@ -101,8 +103,10 @@ export interface CableLine extends BaseRecord {
   design_length: number
   laid_brand: string // пусто = проложен кабель по проекту
   sort: number
-  laid_at: string
+  laid_at: string // «Проведён»
   laid_by: string
+  box_at: string // «Выведен в подрозетник»
+  box_by: string
   marked_at: string
   marked_by: string
   terminated_at: string
@@ -111,14 +115,37 @@ export interface CableLine extends BaseRecord {
   tested_by: string
 }
 
-export type CableStage = "laid" | "marked" | "terminated" | "tested"
+export type CableStage = "laid" | "box" | "marked" | "terminated" | "tested"
+
+// Замер сопротивления заземления.
+export interface GroundMeasurement extends BaseRecord {
+  object: string
+  floor: string
+  room: string
+  place: string // что мерили, например «Корпус ШТК»
+  resistance: number // Ом
+  norm: number // допустимое значение, Ом
+  instrument: string
+  comment: string
+  measured_at: string
+  measured_by: string
+}
+
+// PDF-документ объекта: проект, альбомы, схемы.
+export interface ProjectDocument extends BaseRecord {
+  object: string
+  title: string
+  file: string // путь в хранилище documents
+  size: number // байты
+  created_by: string
+}
 
 // Списки значений в порядке показа на экране.
-export const TASK_SYSTEMS: TaskSystem[] = ["skud", "video", "emergency_light", "scs", "electric", "panels"]
+export const TASK_SYSTEMS: TaskSystem[] = ["skud", "video", "emergency_light", "scs", "electric", "panels", "grounding"]
 export const TASK_STATUSES: TaskStatus[] = ["not_started", "in_progress", "mounted", "checked", "done"]
 export const TASK_PRIORITIES: TaskPriority[] = ["high", "normal", "low"]
 export const PHOTO_TYPES: PhotoType[] = ["before", "after", "hidden_works", "marking", "defect"]
-export const CABLE_STAGES: CableStage[] = ["laid", "marked", "terminated", "tested"]
+export const CABLE_STAGES: CableStage[] = ["laid", "box", "marked", "terminated", "tested"]
 
 export function isTaskSystem(value: string | undefined): value is TaskSystem {
   return TASK_SYSTEMS.includes(value as TaskSystem)
@@ -140,6 +167,7 @@ export const HISTORY_FIELD_LABELS: Record<string, string> = {
   marking: "Маркировка",
   checklist: "Чек-лист",
   plan_point: "Точка на плане",
+  depends_on: "Сначала нужно сделать",
 }
 
 export const SYSTEM_LABELS: Record<TaskSystem, string> = {
@@ -149,6 +177,7 @@ export const SYSTEM_LABELS: Record<TaskSystem, string> = {
   scs: "СКС (интернет)",
   electric: "Электрика",
   panels: "Щиты",
+  grounding: "Заземление",
 }
 
 export const STATUS_LABELS: Record<TaskStatus, string> = {
@@ -166,7 +195,8 @@ export const PRIORITY_LABELS: Record<TaskPriority, string> = {
 }
 
 export const CABLE_STAGE_LABELS: Record<CableStage, string> = {
-  laid: "Проложен",
+  laid: "Проведён",
+  box: "Выведен в подрозетник",
   marked: "Промаркирован",
   terminated: "Оконечен",
   tested: "Проверен",

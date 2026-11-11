@@ -93,6 +93,8 @@ const TIME_FIELDS = new Set([
   "client_updated_at",
   "taken_at",
   "laid_at",
+  "box_at",
+  "measured_at",
   "marked_at",
   "terminated_at",
   "tested_at",
@@ -122,4 +124,6 @@ export const SERVER_TABLES: Record<string, string> = {
   task_history: "task_history",
   photos: "photos",
   cable_lines: "cable_lines",
+  ground_measurements: "ground_measurements",
+  documents: "documents",
 }

@@ -239,11 +239,11 @@ declare
 begin
   for request in select * from jsonb_array_elements(requests) loop
     tbl := request ->> 'table';
-    if tbl not in ('floors', 'rooms', 'tasks', 'photos', 'task_history', 'cable_lines') then
+    if tbl not in ('floors', 'rooms', 'tasks', 'photos', 'task_history', 'cable_lines', 'ground_measurements', 'documents') then
       raise exception 'table % is not allowed', tbl using errcode = '42501';
     end if;
     -- Служебные поля ставит сервер.
-    body := (request -> 'body') - 'id' - 'created' - 'updated';
+    body := coalesce(request -> 'body', '{}'::jsonb) - 'id' - 'created' - 'updated';
 
     if request ->> 'method' = 'create' then
       body := body || jsonb_build_object('id', request ->> 'id');
@@ -265,6 +265,17 @@ begin
       if affected = 0 then
         -- Код P0002 приложение понимает как «запись уже удалена».
         raise exception 'record %/% not found', tbl, request ->> 'id' using errcode = 'P0002';
+      end if;
+    elsif request ->> 'method' = 'delete' then
+      execute format('delete from public.%I where id = $1', tbl) using request ->> 'id';
+      get diagnostics affected = row_count;
+      -- Запись есть, но не удалилась: правила не разрешают удалять.
+      if affected = 0 then
+        execute format('select 1 from public.%I where id = $1', tbl) using request ->> 'id';
+        get diagnostics affected = row_count;
+        if affected > 0 then
+          raise exception 'delete from % is not allowed', tbl using errcode = '42501';
+        end if;
       end if;
     else
       raise exception 'unknown method %', request ->> 'method' using errcode = '22023';

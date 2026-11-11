@@ -1,11 +1,11 @@
-import { Navigate, useParams, useSearchParams } from "react-router"
+import { Link, Navigate, useParams, useSearchParams } from "react-router"
 import { AddTaskButton } from "../components/AddTaskButton"
 import { LoadStatus } from "../components/LoadStatus"
 import { PageHeader } from "../components/PageHeader"
 import { TaskCard } from "../components/TaskCard"
 import { useLoad } from "../hooks/useLoad"
 import { useRestoreScroll } from "../hooks/useRestoreScroll"
-import { getDirectories, getTasks } from "../lib/data"
+import { getDirectories, getTasks, waitingOn } from "../lib/data"
 import { sortTasks } from "../lib/format"
 import { STATUS_LABELS, SYSTEM_LABELS, TASK_STATUSES, isTaskSystem, type TaskSystem } from "../types"
 
@@ -18,11 +18,13 @@ export default function TaskListPage() {
   const [params, setParams] = useSearchParams()
 
   const { data, error, reload } = useLoad(async () => {
-    const [tasks, directories] = await Promise.all([
+    const [tasks, directories, allTasks] = await Promise.all([
       getTasks(system as TaskSystem),
       getDirectories(),
+      getTasks(),
     ])
-    return { tasks, directories }
+    // Предыдущая задача в цепочке может быть из другой системы, поэтому нужны все задачи.
+    return { tasks, directories, tasksById: new Map(allTasks.map((task) => [task.id, task])) }
   }, [system])
 
   useRestoreScroll(Boolean(data))
@@ -71,6 +73,11 @@ export default function TaskListPage() {
           <LoadStatus error={error} onRetry={reload} />
         ) : (
           <>
+            {system === "grounding" && (
+              <Link to="/grounding" className="btn w-full">
+                Замеры сопротивления заземления
+              </Link>
+            )}
             <section className="panel grid grid-cols-2 gap-3 sm:grid-cols-4">
               <label className="block min-w-0">
                 <span className="label">Этаж</span>
@@ -149,7 +156,12 @@ export default function TaskListPage() {
             ) : (
               <div className="space-y-3">
                 {tasks.map((task) => (
-                  <TaskCard key={task.id} task={task} directories={data.directories} />
+                  <TaskCard
+                    key={task.id}
+                    task={task}
+                    directories={data.directories}
+                    waitingOn={waitingOn(task, data.tasksById)}
+                  />
                 ))}
               </div>
             )}

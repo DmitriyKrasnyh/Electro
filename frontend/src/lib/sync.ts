@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import { forgetSession, isLoggedIn } from "./auth"
+import { dropStaleDocumentFiles } from "./documents"
 import { db, PLAN_ON_DEVICE, SYNCED_COLLECTIONS, type OutboxItem, type OutboxRequest } from "./db"
 import {
   SERVER_TABLES,
@@ -259,6 +260,7 @@ async function pullEverything(): Promise<void> {
     await pullCollection(name, reconcile)
   }
   await renewPhotoUrls()
+  await dropStaleDocumentFiles()
   await db.meta.put({ key: "lastSyncAt", value: new Date().toISOString() })
 }
 

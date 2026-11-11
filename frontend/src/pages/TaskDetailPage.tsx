@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { Link, useParams } from "react-router"
 import { BlockPanel } from "../components/BlockPanel"
+import { ChainPanel } from "../components/ChainPanel"
 import { ChecklistPanel } from "../components/ChecklistPanel"
 import { HistoryList } from "../components/HistoryList"
 import { PencilIcon } from "../components/icons"
@@ -13,7 +14,7 @@ import { SaveErrorBanner } from "../components/SaveErrorBanner"
 import { StatusPicker } from "../components/StatusPicker"
 import { useLoad } from "../hooks/useLoad"
 import { useRestoreScroll } from "../hooks/useRestoreScroll"
-import { getDirectories, getHistory, getPhotos, getTask, updateTask, type TaskChanges } from "../lib/data"
+import { getDirectories, getHistory, getPhotos, getTask, getTasks, updateTask, type TaskChanges } from "../lib/data"
 import { formatDate, isOverdue, nameById } from "../lib/format"
 import { PRIORITY_LABELS, SYSTEM_LABELS } from "../types"
 
@@ -23,13 +24,14 @@ export default function TaskDetailPage() {
   const [saveError, setSaveError] = useState<unknown>(null)
 
   const { data, error, reload } = useLoad(async () => {
-    const [task, directories, history, photos] = await Promise.all([
+    const [task, directories, history, photos, tasks] = await Promise.all([
       getTask(id),
       getDirectories(),
       getHistory(id),
       getPhotos(id),
+      getTasks(),
     ])
-    return { task, directories, history, photos }
+    return { task, directories, history, photos, tasks }
   }, [id])
 
   useRestoreScroll(Boolean(data))
@@ -105,6 +107,7 @@ export default function TaskDetailPage() {
             <BlockPanel task={task} disabled={saving} onSave={save} />
             <MarkingPanel marking={task.marking} disabled={saving} onSave={save} />
             <PlanPointPanel task={task} floor={data.directories.floors.find((floor) => floor.id === task.floor)} />
+            <ChainPanel task={task} tasks={data.tasks} disabled={saving} onSave={save} />
 
             {/* Чек-лист нужен в первую очередь для щитов. У других систем показываем его, если он уже заполнен. */}
             {(task.system === "panels" || (task.checklist?.length ?? 0) > 0) && (

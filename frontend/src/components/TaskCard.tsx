@@ -9,10 +9,12 @@ interface TaskCardProps {
   directories: Directories
   // На главной задачи разных систем идут вперемешку, поэтому там показываем систему.
   showSystem?: boolean
+  // Несданная предыдущая задача из цепочки: пока она не сдана, эта ждёт.
+  waitingOn?: Task | null
 }
 
 // Задача в списке. Цвет статуса виден полосой слева, блокировка красной рамкой и лентой.
-export function TaskCard({ task, directories, showSystem = false }: TaskCardProps) {
+export function TaskCard({ task, directories, showSystem = false, waitingOn = null }: TaskCardProps) {
   const place = [
     showSystem ? SYSTEM_LABELS[task.system] : "",
     nameById(directories.floors, task.floor),
@@ -55,6 +57,9 @@ export function TaskCard({ task, directories, showSystem = false }: TaskCardProp
             </p>
           )}
           {task.blocked && <BlockedNote reason={task.blocked_reason} />}
+          {waitingOn && (
+            <p className="leading-snug font-semibold break-words text-amber-800">Ждёт: {waitingOn.title}</p>
+          )}
         </div>
       </div>
     </Link>

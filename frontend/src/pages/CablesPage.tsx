@@ -10,7 +10,7 @@ import { errorMessage, formatDateTime, hasPlanPoint, nameById } from "../lib/for
 import { CABLE_STAGES, CABLE_STAGE_LABELS, SYSTEM_LABELS, TASK_SYSTEMS, type CableLine, type CableStage } from "../types"
 
 // Кабельный журнал: линии по проекту и отметки о ходе работ.
-// Сначала выбирают, что отмечают (например, «Проложен»), потом нажимают на линии.
+// Сначала выбирают, что отмечают (например, «Проведён»), потом нажимают на линии.
 // Выбор этапа, системы и этажа хранится в адресе: после «Назад» он сохраняется.
 export default function CablesPage() {
   const [params, setParams] = useSearchParams()
@@ -95,7 +95,8 @@ export default function CablesPage() {
                       aria-pressed={value === stage}
                       onClick={() => setParam("stage", value === "laid" ? "" : value)}
                       // «Промаркирован» на узком экране едва помещается: шрифт чуть меньше обычного.
-                      className={`btn px-1 text-base ${value === stage ? "btn-primary" : "border-gray-400 font-medium"}`}
+                      // Кнопок пять: последняя на всю ширину, чтобы не оставалось дыры.
+                      className={`btn px-1 text-base last:col-span-2 ${value === stage ? "btn-primary" : "border-gray-400 font-medium"}`}
                     >
                       {CABLE_STAGE_LABELS[value]}
                     </button>
@@ -163,7 +164,7 @@ export default function CablesPage() {
               <h2 className="panel-title">Исполнительная документация</h2>
               <p className="text-base text-gray-700">
                 Весь журнал в формате проекта: по листу на систему и лист «Ход работ» с датами и исполнителями. У
-                проложенных линий длина берётся проектная.
+                проведённых линий длина берётся проектная.
               </p>
               {exportError && (
                 <p role="alert" className="font-semibold text-red-800">
@@ -283,7 +284,11 @@ interface LineButtonProps {
 
 function LineButton({ line, stage, directories, onToggle }: LineButtonProps) {
   const doneAt = line[`${stage}_at`]
-  const otherDone = CABLE_STAGES.filter((other) => other !== stage && line[`${other}_at`])
+  // Состояние кабеля видно всегда, отметки показываем те, что уже стоят (кроме выбранной сверху).
+  const state = line.box_at ? "Выведен в подрозетник" : line.laid_at ? "Проведён" : "Не проведён"
+  const otherDone = CABLE_STAGES.filter(
+    (other) => other !== "laid" && other !== "box" && other !== stage && line[`${other}_at`],
+  )
   return (
     <button
       type="button"
@@ -312,9 +317,9 @@ function LineButton({ line, stage, directories, onToggle }: LineButtonProps) {
             {formatDateTime(doneAt)}, {nameById(directories.users, line[`${stage}_by`]) || "—"}
           </span>
         )}
-        {otherDone.length > 0 && (
-          <span className="block text-sm text-gray-700">Ещё: {otherDone.map((other) => CABLE_STAGE_LABELS[other]).join(", ")}</span>
-        )}
+        <span className="block text-sm text-gray-700">
+          {[state, ...otherDone.map((other) => CABLE_STAGE_LABELS[other])].join(" · ")}
+        </span>
       </span>
     </button>
   )

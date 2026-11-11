@@ -1,5 +1,16 @@
 import Dexie, { type Table } from "dexie"
-import type { CableLine, Floor, Photo, ProjectObject, Room, Task, TaskHistory, User } from "../types"
+import type {
+  CableLine,
+  Floor,
+  GroundMeasurement,
+  Photo,
+  ProjectDocument,
+  ProjectObject,
+  Room,
+  Task,
+  TaskHistory,
+  User,
+} from "../types"
 
 // Локальная база на устройстве (IndexedDB). Экраны читают и пишут только сюда,
 // поэтому приложение работает без связи. С сервером её выравнивает lib/sync.ts.
@@ -11,7 +22,7 @@ export interface LocalPhoto extends Photo {
 
 // Один запрос к серверу внутри элемента очереди.
 export interface OutboxRequest {
-  method: "create" | "update"
+  method: "create" | "update" | "delete"
   collection: string // таблица на устройстве
   id: string
   body: Record<string, unknown>
@@ -41,6 +52,13 @@ export interface PhotoUrl {
   expiresAt: number // миллисекунды, как Date.now()
 }
 
+// Файл документа, однажды открытый на этом устройстве: дальше открывается и без сети.
+export interface DocumentFile {
+  id: string // ID документа
+  path: string // путь в хранилище: если документ заменят, старый файл не подойдёт
+  file: Blob
+}
+
 // Элемент очереди: одно действие пользователя, которое ждёт отправки.
 // Все его запросы выполняются на сервере одной транзакцией.
 export interface OutboxItem {
@@ -65,6 +83,9 @@ class AppDatabase extends Dexie {
   plans!: Table<LocalPlan, string>
   photoUrls!: Table<PhotoUrl, string>
   cable_lines!: Table<CableLine, string>
+  ground_measurements!: Table<GroundMeasurement, string>
+  documents!: Table<ProjectDocument, string>
+  documentFiles!: Table<DocumentFile, string>
   outbox!: Table<OutboxItem, number>
   meta!: Table<{ key: string; value: string }, string>
 
@@ -91,6 +112,12 @@ class AppDatabase extends Dexie {
     this.version(2).stores({
       cable_lines: "id, system",
     })
+    // Замеры заземления и документы объекта.
+    this.version(3).stores({
+      ground_measurements: "id",
+      documents: "id",
+      documentFiles: "id",
+    })
   }
 }
 
@@ -100,7 +127,18 @@ export const OLD_DATABASE_NAME = "electro"
 export const db = new AppDatabase()
 
 // Коллекции, которые копируются с сервера на устройство.
-export const SYNCED_COLLECTIONS = ["users", "objects", "floors", "rooms", "tasks", "task_history", "photos", "cable_lines"]
+export const SYNCED_COLLECTIONS = [
+  "users",
+  "objects",
+  "floors",
+  "rooms",
+  "tasks",
+  "task_history",
+  "photos",
+  "cable_lines",
+  "ground_measurements",
+  "documents",
+]
 
 // Стирает с устройства все данные. Вызывается при выходе из приложения.
 export async function clearLocalData(): Promise<void> {

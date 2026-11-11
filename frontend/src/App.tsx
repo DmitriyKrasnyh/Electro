@@ -4,6 +4,9 @@ import { FirstSyncGate } from "./components/FirstSyncGate"
 import { isLoggedIn, useCurrentUser } from "./lib/auth"
 import CablesPage from "./pages/CablesPage"
 import DirectoriesPage from "./pages/DirectoriesPage"
+import DocumentPage from "./pages/DocumentPage"
+import DocumentsPage from "./pages/DocumentsPage"
+import GroundingPage from "./pages/GroundingPage"
 import HomePage from "./pages/HomePage"
 import LoginPage from "./pages/LoginPage"
 import PasswordPage from "./pages/PasswordPage"
@@ -56,6 +59,9 @@ export default function App() {
           <Route path="/sync" element={<SyncPage />} />
           <Route path="/password" element={<PasswordPage />} />
           <Route path="/cables" element={<CablesPage />} />
+          <Route path="/documents" element={<DocumentsPage />} />
+          <Route path="/documents/:id" element={<DocumentPage />} />
+          <Route path="/grounding" element={<GroundingPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
